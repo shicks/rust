@@ -1,0 +1,4 @@
+[package]
+name = "stick"
+version = "0.1.0"
+authors = ["Stephen Hicks <sdh33@cornell.edu>"]
