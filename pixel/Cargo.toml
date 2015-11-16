@@ -1,7 +1,4 @@
 [package]
-name = "stick"
+name = "pixel"
 version = "0.1.0"
 authors = ["Stephen Hicks <sdh33@cornell.edu>"]
-
-[dependencies]
-lazy_static = "0.1.15"
