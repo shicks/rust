@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate lazy_static;
 
-use std::collections::HashSet;
+use std::collections::{HashMap,HashSet};
 use std::fmt;
 use std::vec::Vec;
 
@@ -77,6 +77,10 @@ impl Pos {
         } else {
             false
         }
+    }
+
+    fn index(&self) -> usize {
+        self.y * 4 + self.x
     }
 
     fn third(&self, other: &Pos) -> Option<Pos> {
@@ -162,6 +166,19 @@ lazy_static! {
     };
 }
 
+type Permutation = [usize;16];
+
+const PERMUTATIONS: [Permutation;8] = [
+    [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+    [3,7,11,15,2,6,10,14,1,5,9,13,0,4,8,12],
+    [15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0],
+    [12,8,4,0,13,9,5,1,14,10,6,2,15,11,7,3],
+    [3,2,1,0,7,6,5,4,11,10,9,8,15,14,13,12],
+    [15,11,7,3,14,10,6,2,13,9,5,1,12,8,4,0],
+    [12,13,14,15,8,9,10,11,4,5,6,7,0,1,2,3],
+    [0,4,8,12,1,5,9,13,2,6,10,14,3,7,11,15],
+    ];
+
 #[derive(Debug,Clone)]
 struct Board {
     // TODO: Make Board persistent/immutable?!?
@@ -215,6 +232,26 @@ impl Board {
             0
         }
     }
+
+    fn state(&self) -> String {
+        let mut pos = vec![' ';16];
+        for piece in &self.pieces {
+            pos[piece.x.index()] = 'x';
+            pos[piece.o.index()] = 'o';
+        }
+        let mut result: Vec<String> = PERMUTATIONS.iter().map(|permutation| {
+            let mut s = String::with_capacity(16);
+            for i in 0..16 {
+                s.push(pos[permutation[i]])
+            }
+            s
+        }).collect();
+        result.sort();
+        // TODO(sdh): Store which permutation this was, so that we
+        // can map *back* to the original as needed.  This would need
+        // to be returned separate to the string itself.
+        result[0].clone()
+    }
 }
 
 fn three_in_a_row(set: &HashSet<Pos>) -> bool {
@@ -253,40 +290,53 @@ impl fmt::Display for Board {
     }
 }
 
-fn play(b: Board, goal: i8) -> Board {
-    let pieces: &Vec<Piece> = &ALL_PIECES;
-    let mut boards: Vec<Board> = vec![];
+struct Solver(HashMap<String, (Board, i8)>);
 
-    for p in pieces {
-        let mut b2 = b.clone();
-        if b2.add(p.clone()) {
-            let s2 = b2.score();
-            if s2 * goal > 0 {
-                println!("WIN {}\n{}\n", goal, &b2);
-                return b2;
-            } else if s2 == 0 {
-                boards.push(b2);
+impl Solver {
+    fn new() -> Self {
+        Solver(HashMap::new())
+    }
+
+    fn solve(&mut self, b: Board, goal: i8) -> (Board, i8) {
+        let pieces: &Vec<Piece> = &ALL_PIECES;
+        let mut boards: Vec<Board> = vec![];
+        let state = b.state();
+        match self.0.get(&state) {
+            Some(&(ref b1, s1)) => return (b1.clone(), s1),
+            None => (),
+        }
+
+        for p in pieces {
+            let mut b2 = b.clone();
+            if b2.add(p.clone()) {
+                let s2 = b2.score();
+                if s2 * goal > 0 {
+                    // println!("WIN {}\n{}\n", goal, &b2);
+                    self.0.insert(state, (b2.clone(), s2));
+                    return (b2, s2);
+                } else if s2 == 0 {
+                    boards.push(b2);
+                }
             }
         }
-    }
 
-    let mut best_score = -100;
-    let mut best_board = b.clone(); // ?!?
-    for board in boards {
-        let board = play(board, -goal);
-        let s = board.score();
-        if s * goal > best_score {
-            best_score = s * goal;
-            best_board = board;
+        let mut best_score = -100;
+        let mut best_board = b.clone(); // ?!?
+        for board in boards {
+            let (board, s) = self.solve(board, -goal);
+            if s * goal > best_score {
+                best_score = s * goal;
+                best_board = board;
+            }
         }
+        self.0.insert(state, (best_board.clone(), best_score * goal));
+        (best_board, best_score * goal)
     }
-    best_board
 }
 
 
 
-
 fn main() {
-    let board = play(Board::new(), 1);
+    let (board, _) = Solver::new().solve(Board::new(), 1);
     println!("\nOPTIMUM:\n{}", board);
 }
