@@ -11,52 +11,6 @@ macro_rules! do_option {
     })
 }
 
-// fn minimum_by<T, F>(v: Vec<T>, f: F) -> Option<T> where F: Fn(&T) -> usize {
-//     let mut best_score = 0;
-//     let mut best_item: Option<T> = None;
-//     for item in v.drain(..) {
-//         let score = f(item);
-//         if best_item.is_none() || score < best_score {
-//             best_score = score;
-//             best_item = Some(item);
-//         }
-//     }
-//     best_item
-// }
-
-// Iterates over pairs in a principled way.
-struct Pairs {
-    start: usize,
-    x: usize,
-    y: usize,
-}
-
-impl Pairs {
-    fn starting_at(n: usize) -> Pairs {
-        Pairs{start: n, x: n, y: n}
-    }
-}
-
-impl Iterator for Pairs {
-    type Item = (usize, usize);
-
-    fn next(&mut self) -> Option<(usize, usize)> {
-        let result = (self.x, self.y);
-        if self.x == self.start {
-            self.x += self.y - self.start + 1;
-            self.y = self.start;
-        } else {
-            self.x -= 1;
-            self.y += 1;
-        }
-        Some(result)
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, None)
-    }
-}
-
 /// Iterates over multiple ranges at once
 struct Vecs<'a> {
     start: usize,
@@ -230,15 +184,6 @@ impl Pixel {
     }
 }
 
-// #[derive(PartialEq,Eq)]
-// struct Key<K>(RefCell<K>);
-
-// impl<K: Hash> Hash for Key<K> {
-//     fn hash<H: Hasher>(&self, state: &mut H) {
-//         self[0].borrow().hash(state);
-//     }
-// }
-
 struct UniqueMap<K, V> where K: Eq+Hash {
     doubles: HashSet<K>,
     data: HashMap<K, V>,
@@ -270,19 +215,19 @@ impl<K: Clone+Eq+Hash, V> UniqueMap<K, V> {
 }
 
 fn find() -> Pixel {
-    for (width, height) in Pairs::starting_at(1) {
+    for size in (2..) {
         let mut map: UniqueMap<Counts, Pixel> = UniqueMap::new();
         // TODO(sdh): if we're smarter about generating these, then
         // we can save lots of work...
 
-        let limits = vec![width; height];
+        let limits = vec![size; size];
         for counts in Vecs::start(1, &limits) {
             let max_starts: Vec<usize> =
-                counts.iter().map(|count| { width - count + 1 }).collect();
+                counts.iter().map(|count| { size - count + 1 }).collect();
             for starts in Vecs::start(0, &max_starts) {
                 // Build up the board
-                let mut pix = Pixel::new(width, height);
-                for row in 0..height {
+                let mut pix = Pixel::new(size, size);
+                for row in 0..size {
                     for col in 0..counts[row] {
                         pix[(col + starts[row], row)] = true;
                     }
@@ -297,9 +242,6 @@ fn find() -> Pixel {
         }
 
         if !map.data.is_empty() {
-            // for (k, v) in map.data.iter() {
-            //     println!("{}\n{}", v, k);
-            // }
             let mut best_count = 0;
             let mut best: Option<Pixel> = None;
             for (k, v) in map.drain_unique() {
@@ -309,10 +251,6 @@ fn find() -> Pixel {
                 }
             }
             return best.unwrap();
-            // {
-            //     key = map.data.keys().next().unwrap().clone();
-            // }
-            // return map.data.remove(key).unwrap();
         }
         
     }
@@ -321,10 +259,6 @@ fn find() -> Pixel {
 
 
 fn main() {
-    // let mut p = Pixel::new(5, 5);
-    // p[(2, 3)] = true;
-    // p[(1, 1)] = true;
-    // p[(4, 0)] = true;
     let p = find();
     println!("{}", p);
     match p.counts() {
