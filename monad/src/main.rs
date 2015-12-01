@@ -59,17 +59,15 @@ trait FromStr {
 
 
 trait Monad<Type> {
-    type T;
-    fn ret(t: Self::T) -> Self;
-    fn fail(msg: &str) -> Self;
+    type M;
+    fn ret(self) -> Self::M;
+    fn fail(msg: &str) -> Self::M;
     // Problem: how to guarantee that MB is something we know about?!?
     //   -- would like to add extra methods to the trait... but can't?
     //   -- some way to intermediate through Type ?!? but it's not
     //      parametrized, so it doesn't seem possible.
-    fn bind<MB, F>(self, f: F) -> MB
-        where MB : Monad<Type>, F : Fn(Self::T) -> MB;
-    // fn unwrap(self) -> (Type, Witness<T>);
-    // fn wrap(t: Type, 
+    fn bind<B, F>(ma: Self::M, f: F) -> <B as Monad<Type>>::M
+        where B : Monad<Type>, F : Fn(Self) -> <B as Monad<Type>>::M;
 }
 
 struct Maybe;
@@ -78,14 +76,14 @@ struct Maybe;
 //     type M = Option<A>;
 // }
 
-impl<A> Monad<Maybe> for Option<A> {
-    type T = A;
-    fn ret(a: A) -> Option<A> { Some(a) }
-    fn bind<MB, F>(self, f: F) -> MB
-        where MB : Monad<Maybe>, F : Fn(A) -> MB {
-        match self {
+impl<A> Monad<Maybe> for A {
+    type M = Option<A>;
+    fn ret(self) -> Option<A> { Some(self) }
+    fn bind<B, F>(ma: Self::M, f: F) -> <B as Monad<Maybe>>::M
+        where B : Monad<Maybe>, F : Fn(A) -> <B as Monad<Maybe>>::M {
+        match ma {
             Some(a) => f(a),
-            None => MB::fail(""),
+            None => <B as Monad<Maybe>>::fail(""),
         }
     }
     fn fail(_: &str) -> Option<A> { None }
@@ -189,16 +187,16 @@ fn half(x: u8) -> Option<u8> {
 
 
 macro_rules! mdo {
-    (
-        $p: pat =<< $e: expr; $($t: tt)*
-    ) => (
-        <_ as Monad<_>>::bind($e, |$p| mdo! { $($t)* })
-    );
+    // (
+    //     $p: pat =<< $e: expr; $($t: tt)*
+    // ) => (
+    //     <_ as Monad<_>>::bind($e, |$p| mdo! { $($t)* })
+    // );
 
     (
         $p: ident: $ty: ty =<< $e: expr; $($t: tt)*
     ) => (
-        <_ as Monad<_>>::bind($e, |$p: $ty| mdo! { $($t)* })
+        <$ty as Monad<_>>::bind($e, |$p: $ty| mdo! { $($t)* })
     );
 
     (
@@ -220,11 +218,14 @@ let out = mdo!{
 
 fn main() {
 
-    let my: Option<u8> = mdo! {
-        y: u8 =<< half(7);
-        half(y)
-    };
-    //let my = <_ as Monad<_>>::bind(half(x), half);
+    // let my: Option<u8> = mdo! {
+    //     y: u8 =<< half(7);
+    //     half(y)
+    // };
+
+    let x: u8 = 8;
+    let my: Option<u8> = <u8 as Monad<Maybe>>::bind(half(x), half);
+
     match my {
         Some(y) => { println!("Quarter: {}", y); }
         None => { println!("Nothing"); }
