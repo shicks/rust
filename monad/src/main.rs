@@ -1,3 +1,4 @@
+use std::mem;
 // use std::marker::PhantomData;
 
 // TODO(sdh): can we partially specify types?
@@ -19,12 +20,43 @@
 //     })
 // })
 
+unsafe fn runtime_transmute<T, U>(t: T) -> U {
+    assert_eq!(std::mem::size_of::<T>(), std::mem::size_of::<U>());
+    std::ptr::read(&t as *const _ as *const _)
+}
+
 trait FromStr {
     fn from_str(String) -> Self;
 }
 
 
-// struct Witness<T> {
+trait Wrapper<Type> {
+    type Inner : Wrapped<Type>;
+    fn bind<B, F>(self, f: F) -> <B as Wrapped<Type>>::Outer
+        where B: Wrapped<Type>, F: Fn(Self::Inner) -> <B as Wrapped<Type>>::Outer;
+}
+trait Wrapped<Type> {
+    type Outer : Wrapper<Type>;
+}
+
+struct Opt;
+impl<T> Wrapped<Opt> for T {
+    type Outer = Option<T>;
+}
+impl<T> Wrapper<Opt> for Option<T> {
+    type Inner = T;
+    fn bind<B, F>(self, f: F) -> <B as Wrapped<Opt>>::Outer
+        where B: Wrapped<Opt>, F: Fn(Self::Inner) -> <B as Wrapped<Opt>>::Outer {
+        match self {
+            Some(a) => f(a),
+            None => runtime_transmute(None::<B>),
+        }
+    }
+}
+
+
+
+// Struct Witness<T> {
 //     phantom: PhantomData<T>,
 // }
 
@@ -53,10 +85,11 @@ trait FromStr {
 //     fn fail(_: &str) -> Option<A> { None }
 // }
 
-// trait MonadType<T> {
-//     type M: Monad<Self>;
-// }
-
+trait MonadType<Type> {
+    type M: Monad<Type>;
+    //fn transmute<S>(x: S) -> Self::M where S : Monad<Self>;
+    //fn cast<S: Monad<Type>>(ma: Self::M) -> S;
+}
 
 trait Monad<Type> {
     type T;
@@ -66,26 +99,37 @@ trait Monad<Type> {
     //   -- would like to add extra methods to the trait... but can't?
     //   -- some way to intermediate through Type ?!? but it's not
     //      parametrized, so it doesn't seem possible.
-    fn bind<MB, F>(self, f: F) -> MB
-        where MB : Monad<Type>, F : Fn(Self::T) -> MB;
+    fn bind<B, F>(self, f: F) -> <B as MonadType<Type>>::M
+        where B : MonadType<Type>, F : Fn(Self::T) -> <B as MonadType<Type>>::M;
     // fn unwrap(self) -> (Type, Witness<T>);
     // fn wrap(t: Type, 
 }
 
 struct Maybe;
 
-// impl<A> MonadType<A> for Maybe {
-//     type M = Option<A>;
-// }
+impl<A> MonadType<Maybe> for A {
+    type M = Option<A>;
+    // fn cast<S: Monad<Maybe>>(ma: Option<A>) -> S {
+    //     unsafe {
+    //         let x: *mut void = &ma;
+    //         *x
+    //     }
+    // }
+    //fn transmute<S: Monad<Maybe>>(x: S) -> Option<A> {
+    //    mem::transmute(x)
+    //}
+}
 
 impl<A> Monad<Maybe> for Option<A> {
     type T = A;
     fn ret(a: A) -> Option<A> { Some(a) }
-    fn bind<MB, F>(self, f: F) -> MB
-        where MB : Monad<Maybe>, F : Fn(A) -> MB {
+    fn bind<B, F>(self, f: F) -> <B as MonadType<Maybe>>::M
+        where B : MonadType<Maybe>, F : Fn(A) -> <B as MonadType<Maybe>>::M {
         match self {
             Some(a) => f(a),
-            None => MB::fail(""),
+            None => runtime_transmute(None::<B>),
+            //None => (None as Option<B>) as <B as MonadType<Maybe>>::M,
+            //None => unsafe { mem::transmute(None as Option<B>) },
         }
     }
     fn fail(_: &str) -> Option<A> { None }
@@ -220,11 +264,14 @@ let out = mdo!{
 
 fn main() {
 
-    let my: Option<u8> = mdo! {
-        y: u8 =<< half(7);
-        half(y)
-    };
-    //let my = <_ as Monad<_>>::bind(half(x), half);
+    // let my: Option<u8> = mdo! {
+    //     y: u8 =<< half(7);
+    //     half(y)
+    // };
+
+    let x: u8 = 8;
+    let my: Option<u8> = <Option<u8> as Monad<Maybe>>::bind(half(x), half);
+
     match my {
         Some(y) => { println!("Quarter: {}", y); }
         None => { println!("Nothing"); }
