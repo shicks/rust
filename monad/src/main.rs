@@ -199,7 +199,12 @@ macro_rules! mdo {
     (   < $mt: ty >
         $p: pat =<< $e: expr; $($t: tt)*
     ) => (
-        Monad::<$mt, _>::bind($e, |$p| mdo! { < $mt > $($t)* })
+        Monad::<$mt, _>::bind($e, |x| {
+            match x {
+                $p if true => mdo! { < $mt > $($t)* },
+                _ => Monad::<$mt, _>::fail("Pattern match failed")
+            }
+        })
     );
 
     (   < $mt: ty >
@@ -227,17 +232,15 @@ let out = mdo!{
 
 fn main() {
 
-    let my: Option<u8> = mdo! {
-        <Maybe>
+    let my: Option<u8> = mdo! { <Maybe>
         y: u8 =<< half(7);
         half(y)
     };
 
-    let opts: Vec<(u8, u8)> = mdo! {
-        <List>
-        x: u8 =<< vec![1, 2, 3];
-        y: u8 =<< vec![4, 5, 6];
-        ret((x, y))
+    let opts: Vec<(u8, u8)> = mdo! { <List>
+        Some(x) =<< vec![Some(1), Some(2), None];
+        y =<< vec![4, 5, 6];
+        vec![(x, y)]
     };
 
     // let x: u8 = 8;
