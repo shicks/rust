@@ -27,37 +27,30 @@ trait FromStr {
     fn from_str(String) -> Self;
 }
 
-struct MonadWrapper<Type, Elem> {
+struct Monad<Type, Elem> {
     phantom: PhantomData<(Type, Elem)>
 }
 
-trait Monad {
-    type Type;
-    type A;
-    type M;
-    fn ret(a: Self::A) -> Self::M;
-    fn fail(msg: &str) -> Self::M;
-    fn bind<B, MB, F>(ma: Self::M, f: F) -> MB
-        where MonadWrapper<Self::Type, B> : Monad,
-              MB : Is<<MonadWrapper<Self::Type, B> as Monad>::M>,
-              F : Fn(Self::A) -> MB;
-}
-
+// trait Monad {
+//     type Type;
+//     type A;
+//     type M;
+//     fn ret(a: Self::A) -> Self::M;
+//     fn fail(msg: &str) -> Self::M;
+//     fn bind<B, MB, F>(ma: Self::M, f: F) -> MB
+//         where MonadWrapper<Self::Type, B> : Monad,
+//               MB : Is<<MonadWrapper<Self::Type, B> as Monad>::M>,
+//               F : Fn(Self::A) -> MB;
+// }
 
 struct Maybe;
 
-impl<A> Monad for MonadWrapper<Maybe, A> {
-    type Type = Maybe;
-    type A = A;
-    type M = Option<A>;
+impl<A> Monad<Maybe, A> {
     fn ret(a: A) -> Option<A> { Some(a) }
-    fn bind<B, MB, F>(ma: Option<A>, f: F) -> MB
-        where MonadWrapper<Maybe, B> : Monad,
-              MB : Is<<MonadWrapper<Maybe, B> as Monad>::M>,
-              F : Fn(A) -> MB {
+    fn bind<B, F: Fn(A) -> Option<B>>(ma: Option<A>, f: F) -> Option<B> {
         match ma {
             Some(a) => f(a),
-            None => runtime_transmute(None::<B>),
+            None => None::<B>,
             //None => (None as Option<B>) as <B as MonadType<Maybe>>::M,
             //None => unsafe { mem::transmute(None as Option<B>) },
         }
@@ -65,6 +58,20 @@ impl<A> Monad for MonadWrapper<Maybe, A> {
     fn fail(_: &str) -> Option<A> { None }
 }
 
+struct List;
+impl<A> Monad<List, A> {
+    fn ret(a: A) -> Vec<A> { vec![a] }
+    fn bind<B, F: Fn(A) -> Vec<B>>(ma: Vec<A>, f: F) -> Vec<B> {
+        let mut out = vec![];
+        for a in ma {
+            for b in f(a) {
+                out.push(b);
+            }
+        }
+        out
+    }
+    fn fail(_: &str) -> Vec<A> { vec![] }
+}
 
 // trait Monad<Type> {
 //     type M;
@@ -189,25 +196,25 @@ fn half(x: u8) -> Option<u8> {
 
 
 macro_rules! mdo {
-    (
+    (   < $mt: ty >
         $p: pat =<< $e: expr; $($t: tt)*
     ) => (
-        <_ as Monad<_>>::bind($e, |$p| mdo! { $($t)* })
+        Monad::<$mt, _>::bind($e, |$p| mdo! { < $mt > $($t)* })
     );
 
-    (
+    (   < $mt: ty >
         $p: ident: $ty: ty =<< $e: expr; $($t: tt)*
     ) => (
-        <_ as Monad<_>>::bind($e, |$p: $ty| mdo! { $($t)* })
+        Monad::<$mt, _>::bind($e, |$p: $ty| mdo! { < $mt > $($t)* })
     );
 
-    (
+    (   < $mt: ty >
         $e: expr; $(t: tt)*
     ) => (
-        <_ as Monad<_>>::bind($e, |_| mdo! { $($t)* })
+        Monad::<$mt, _>::bind($e, |_| mdo! { < $mt > $($t)* })
     );
 
-    ($e: expr) => ($e);
+    ( < $mt: ty > $e: expr) => ($e);
 }
 
 /*
@@ -220,19 +227,22 @@ let out = mdo!{
 
 fn main() {
 
-    // let my: Option<u8> = mdo! {
-    //     y: u8 =<< half(7);
-    //     half(y)
-    // };
+    let my: Option<u8> = mdo! {
+        <Maybe>
+        y: u8 =<< half(7);
+        half(y)
+    };
 
-    let x: u8 = 8;
-    let mx: Option<u8> = half(x);
-    let my: Option<u8> = <_ as Monad<_>>::bind(None::<u8>, mx, half);
+    let opts: Vec<(u8, u8)> = mdo! {
+        <List>
+        x: u8 =<< vec![1, 2, 3];
+        y: u8 =<< vec![4, 5, 6];
+        ret((x, y))
+    };
 
-    match my {
-        Some(y) => { println!("Quarter: {}", y); }
-        None => { println!("Nothing"); }
-    }                   
+    // let x: u8 = 8;
+    // let mx: Option<u8> = half(x);
+    // let my: Option<u8> = Monad::bind(mx, half);
 
-    println!("Hello, world!");
+    println!("Result: {:?}", opts);
 }
